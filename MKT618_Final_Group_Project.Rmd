@@ -1,0 +1,556 @@
+
+---
+title: "MKT618 Final Group Project"
+author: "Meiji Supakamolsenee"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Introduction
+
+This document provides the analysis for the MKT618 Final Group Project. The goal is to identify the target market for the iPhone 14 and estimate consumers' willingness to pay for key smartphone features.
+
+# Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+```
+
+# Load and Explore the Data
+
+```{r load-data}
+# Load the data
+survey_data <- read.csv("/Users/suparadasupakamolsenee/Desktop/MBAN FALL B/MKT618/Final Group Project/Smart_Phone_Survey.csv")
+design_matrix_raw <- read.csv("/Users/suparadasupakamolsenee/Desktop/MBAN FALL B/MKT618/Final Group Project/Smart_Phone_Design_Matrix.csv")
+
+# Summarize the data
+summary(survey_data)
+summary(design_matrix_raw)
+
+# Structure and initial rows
+str(survey_data)
+head(survey_data)
+```
+
+# Goals
+
+The analysis addresses the following:
+1. Understand smartphone purchasing and usage behavior.
+2. Analyze perceptions of different smartphone brands.
+3. Evaluate willingness-to-pay for key features.
+
+## Subtasks
+- Awareness of smartphone brands: Frequency Analysis.
+- Familiarity with smartphone brands.
+- Primary smartphone brand used.
+- Overall perception ratings (conjoint analysis).
+- Daily phone usage and replacement frequency.
+
+# 1. Exploratory Data Analysis
+## Basic summary statistics for continuous variables
+```{r exploratory-analysis}
+# Q3: Typical Daily Phone Usage
+mean(survey_data$duration, na.rm = TRUE)
+sd(survey_data$duration, na.rm = TRUE)
+
+# Q6: How important each of these attributes are in decision to purchase a smart phone
+mean(survey_data$imp_brand, na.rm = TRUE)
+sd(survey_data$imp_brand, na.rm = TRUE)
+# imp_screen_size
+mean(survey_data$imp_screen_size, na.rm = TRUE)
+sd(survey_data$imp_screen_size, na.rm = TRUE)
+# imp_battery_life
+mean(survey_data$imp_battery_life, na.rm = TRUE)
+sd(survey_data$imp_battery_life, na.rm = TRUE)
+# imp_price
+mean(survey_data$imp_price, na.rm = TRUE)
+sd(survey_data$imp_price, na.rm = TRUE)
+```
+
+## Percentages for discrete/categorical variables
+```{r}
+# Q1b: Most familiar smartphone brand: familiar_most
+table(survey_data$familiar_most) / nrow(survey_data) * 100
+# Q1c: Primary smartphone brand used: use_most
+table(survey_data$use_most) / nrow(survey_data) * 100
+# Q3: Typical daily phone usage: daily_usage
+table(survey_data$daily_usage) / nrow(survey_data) * 100
+# Q4: Frequency of phone replacement: replacement categorical
+table(survey_data$replacement) / nrow(survey_data) * 100
+```
+
+## Understanding Demographics
+```{r}
+mean(survey_data$age, na.rm = TRUE)
+sd(survey_data$age, na.rm = TRUE)
+table(survey_data$gender) / nrow(survey_data) * 100
+table(survey_data$hh_income) / nrow(survey_data) * 100
+table(survey_data$education) / nrow(survey_data) * 100
+table(survey_data$employment) / nrow(survey_data) * 100
+
+
+# Calculate mean and standard deviation for age
+mean_age <- mean(survey_data$age, na.rm = TRUE)
+sd_age <- sd(survey_data$age, na.rm = TRUE)
+
+# Calculate percentages for gender
+gender_dist <- prop.table(table(survey_data$gender)) * 100
+
+# Calculate percentages for household income
+income_dist <- prop.table(table(survey_data$hh_income)) * 100
+
+# Calculate percentages for education
+education_dist <- prop.table(table(survey_data$education)) * 100
+
+# Calculate percentages for employment
+employment_dist <- prop.table(table(survey_data$employment)) * 100
+
+# Combine all statistics into a data frame
+summary_table <- data.frame(
+  Metric = c(
+    "Mean Age",
+    "Age Standard Deviation",
+    paste0("Gender (", names(gender_dist), " %)"),
+    paste0("Household Income (", names(income_dist), " %)"),
+    paste0("Education (", names(education_dist), " %)"),
+    paste0("Employment (", names(employment_dist), " %)")
+  ),
+  Value = c(
+    mean_age,
+    sd_age,
+    as.numeric(gender_dist),
+    as.numeric(income_dist),
+    as.numeric(education_dist),
+    as.numeric(employment_dist)
+  )
+)
+
+# View the summary table
+print(summary_table)
+```
+
+```{r}
+# Check unique levels in your Gender column
+unique(survey_data$gender)
+
+# Example of ensuring correct levels
+survey_data$gender <- as.factor(survey_data$gender) # Ensure it's a factor
+
+# Correct the levels in your dataset
+levels(survey_data$gender) <- c("Male", "Female") # Ensure levels match your intended labels
+
+# Create the pie chart
+gender_counts <- table(survey_data$gender) # Summarize gender data
+gender_df <- as.data.frame(gender_counts)
+colnames(gender_df) <- c("Gender", "Count")
+gender_df$Percentage <- round(gender_df$Count / sum(gender_df$Count) * 100, 1)
+
+ggplot(gender_df, aes(x = "", y = Count, fill = Gender)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  theme_void() +
+  labs(
+    title = "Male vs Female Participants",
+    fill = "Gender"
+  ) +
+  scale_fill_manual(values = c("Male" = "goldenrod3", "Female" = "navyblue")) +
+  geom_text(aes(label = paste0(Percentage, "%")), 
+            position = position_stack(vjust = 0.5), size = 5)
+```
+
+
+
+# 2. Relevant percentage or mean comparison across groups in tables/graphs to show relationships between two variables of interest (at least four). Please also perform hypothesis tests when appropriate
+
+## Distribution of smartphone survey and daily usage (same as Jatin)
+```{r}
+survey_data$use_freq <- recode(survey_data$daily_usage,
+                    '< 30 mins' = "light users",
+                    '30 mins - < 1 hr' = "light users",
+                    '1 hr - < 2 hrs' = "medium users",
+                    '2 hrs - < 3 hrs' = "medium users",
+                    '3 hrs - < 4 hrs' = "medium users",
+                    '4 hrs - < 5 hrs' = "heavy users",
+                    '5 hrs - < 7 hrs' = "heavy users",
+                    '7 hrs or more' = "heavy users")
+
+# Plot the original daily usage distribution
+ggplot(survey_data, aes(x = daily_usage)) +
+  geom_bar(fill = "steelblue", color = "black") +
+  labs(title = "Distribution of smartphone survey$daily_usage",
+       x = "Daily Usage",
+       y = "Frequency") +
+  theme_minimal() +
+  coord_flip()  # Flip coordinates for horizontal bars
+```
+## Frequency Analysis: Calculating the frequency and percentage of respondents aware of each brand.
+```{r}
+brand_awareness <- subset(survey_data, select = c(aware_iPhone, aware_Google, aware_Samsung, aware_Motorola, aware_Xiaomi, 
+                               aware_OnePlus, aware_Huawei, aware_Oppo, aware_Nokia, aware_others))
+brand_frequency <- colSums(brand_awareness)
+brand_percentage <- brand_frequency / nrow(brand_awareness) * 100
+brand_summary <- data.frame(Brand = colnames(brand_awareness), Frequency = brand_frequency, Percentage = round(brand_percentage, 2))
+print(brand_summary)
+```
+
+## Hypothesis Testing
+```{r}
+# Perceived Importance of Smartphone Attributes
+  # H0: Mean importance of battery life equals mean importance of price.
+  # Ha: Mean importance of battery life differs from mean importance of price.
+  # Paired t-test
+t.test(survey_data$imp_battery_life, survey_data$imp_price, paired = TRUE, na.rm = TRUE)
+  # Side-by-side box plots
+library(tidyr)
+library(ggplot2)
+importance_data <- survey_data %>%
+  select(imp_battery_life, imp_price) %>%
+  pivot_longer(cols = everything(), names_to = "Attribute", values_to = "Importance")
+
+ggplot(importance_data, aes(x = Attribute, y = Importance, fill = Attribute)) +
+  geom_boxplot() +
+  labs(title = "Importance of Battery Life vs. Price", x = "Attribute", y = "Importance Rating") +
+  theme_minimal()
+```
+
+## ANOVA
+```{r}
+# Purchase likelihood across different smartphone profiles
+  # H0: Purchase likelihood is the same across profiles.
+  # Ha: Purchase likelihood differs across profiles.
+# Reshape data to long format for ANOVA
+ratings <- survey_data %>%
+  select(starts_with("rating")) %>%
+  pivot_longer(cols = everything(), names_to = "Profile", values_to = "Rating")
+
+anova_wtp <- aov(Rating ~ Profile, data = ratings)
+summary(anova_wtp)
+
+ggplot(ratings, aes(x = Profile, y = Rating)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Purchase Likelihood Across Smartphone Profiles", x = "Profile", y = "Purchase Likelihood") +
+  theme_minimal()
+```
+
+```{r}
+# One-way ANOVA
+# Do different employment status level affect purchase intent?
+aov_employed <- aov(purchase_intent ~ employment, data = survey_data)
+summary(aov_employed)
+```
+
+## Independent Samples t-test
+```{r}
+# Do males and females differ in their purchase intent?
+t.test(purchase_intent ~ gender, data = survey_data)
+```
+## Chisquare
+### Use smartphone vs Education Level
+```{r}
+chisq.test(survey_data$sq_use_smart_phone, survey_data$education)
+```
+
+# 3. A hierarchical Bayes regression analysis to estimate partworths and compute willingness-to-pay.  You should estimate partworths/willingness-to-pay for each participant and then compare their means across groups that you find insightful. In order to estimate participant-specific partworths, you will also need to use Smart_Phone_Design_Matrix.csv (to replace the Design_Matrix.csv I used as an example in the tutorial video). 
+
+```{r analysis}
+# Load necessary libraries
+library(bayesm)
+library(MASS)
+```
+
+
+```{r}
+# Extract the design matrix
+X <- as.matrix(design_matrix_raw[, -1])  # Drop "Profile" column
+XD <- as.matrix(X[, colSums(is.na(X)) == 0])  # Drop NA columns
+# Prepare the ratings matrix (choose only columns with participant ratings)
+rating <- as.matrix(survey_data[, c("rating1", "rating2", "rating3", "rating4", "rating5", 
+                                    "rating6", "rating7", "rating8", "rating9")])
+# Prepare data to run HB Regression and obtain partworths for each participant
+nreg <- nrow(rating) # number of participants
+nz <- 1
+nvar <- ncol(XD) # number of partworths to be estimated 
+nrating <- ncol(rating) # number of rating tasks
+
+regdata = NULL
+for (i in 1:nreg) {
+  M.x <- XD  # Read dummy variables plus an intercept
+  ytmp <- rating[i, ]  # Read rating data for each participant
+  regdata[[i]] <- list(y = ytmp, X = M.x)
+}
+
+individualz <- matrix(0, nrow = nreg, ncol = nz)
+individualz[, 1] <- rep(1, nreg)
+
+# Prepare data to run regression to obtain one set of partworths across all participants
+nnvar <- nvar + 2
+newdata <- matrix(0, nreg * nrating, nnvar)
+
+for (i in 1:nreg) {
+  begin <- ((i - 1) * nrating) + 1
+  end <- ((i - 1) * nrating) + nrating
+  ind <- begin:end 
+  ynew.tmp <- t(rating[i, ])
+  ynew <- t(ynew.tmp)
+  newdata[ind, 1] <- survey_data[i, 1]  # Participant ID
+  newdata[ind, 2] <- ynew  # Ratings
+  newdata[ind, 3:nnvar] <- M.x  # Dummy variables
+}
+
+newdata <- as.data.frame(newdata)
+colnames(newdata)[1] <- "PID"
+colnames(newdata)[2] <- "Rating"
+colnames(newdata)[3] <- "Intercept"
+colnames(newdata)[4] <- "iPhone"  
+colnames(newdata)[5] <- "Samsung"
+colnames(newdata)[6] <- "Size55"
+colnames(newdata)[7] <- "Size64"
+colnames(newdata)[8] <- "Battery11"
+colnames(newdata)[9] <- "Battery15"
+colnames(newdata)[10] <- "Price749"
+colnames(newdata)[11] <- "Price1099"
+```
+
+## Run the multiple linear regression model to obtain aggregate partworths across all participants
+```{r}
+# Part-worths are used in conjoint analysis to measure how much a product feature influences a customer's decision to purchase a product
+reg.compact <- lm(Rating ~ iPhone + Samsung + Size55 + Size64 + Battery11 + Battery15 + Price749 + Price1099, data = newdata) 
+summary(reg.compact)  # Print the result
+```
+
+## Run the Hierarchical Bayes regression model 
+to obtain different sets of partworths for different participants
+```{r}
+Data1 <- list(regdata = regdata, Z = individualz)
+Mcmc1 <- list(R = 20000, keep = 10)
+out <- rhierLinearModel(Data = Data1, Mcmc = Mcmc1)
+
+# Extract participant-level partworths
+burnout <- 1000:2000  # Burn-in iterations
+betai <- matrix(0, nrow = nreg, ncol = nvar)
+for (i in 1:nreg) {
+  betai[i, ] <- apply(out$betadraw[i, , burnout], 1, mean)
+}
+
+# Add participants' part-worths back to the survey data
+rating_new <- cbind(survey_data, round(betai, 3))
+colnames(rating_new)[ncol(survey_data) + 1] <- "Intercept"
+colnames(rating_new)[ncol(survey_data) + 2] <- "iPhone"
+colnames(rating_new)[ncol(survey_data) + 3] <- "Samsung"
+colnames(rating_new)[ncol(survey_data) + 4] <- "Screen55"
+colnames(rating_new)[ncol(survey_data) + 5] <- "Screen64"
+colnames(rating_new)[ncol(survey_data) + 6] <- "Battery11"
+colnames(rating_new)[ncol(survey_data) + 7] <- "Battery15"
+colnames(rating_new)[ncol(survey_data) + 8] <- "Price749"
+colnames(rating_new)[ncol(survey_data) + 9] <- "Price1099"
+
+# Save the new dataset
+write.csv(rating_new, file = "/Users/suparadasupakamolsenee/Desktop/MBAN FALL B/MKT618/Final Group Project/Smartphone_Partworths.csv", row.names = FALSE)
+```
+
+
+## WTP
+```{r}
+# Partworths are unitless.
+# The WTP formula is based on dividing each feature's part-worth by the absolute value of the part-worth of price.
+# Choose one price level (Price749) as the denominator to normalize the part-worth utilities of other attributes.
+wtp <- rating_new %>%
+  mutate(
+    WTP_iPhone = iPhone / abs(Price749),
+    WTP_Samsung = Samsung / abs(Price749),
+    WTP_Screen55 = Screen55 / abs(Price749),
+    WTP_Screen64 = Screen64 / abs(Price749),
+    WTP_Battery11 = Battery11 / abs(Price749),
+    WTP_Battery15 = Battery15 / abs(Price749)
+  )
+
+# Save WTP to the dataset
+write.csv(wtp, file = "/Users/suparadasupakamolsenee/Desktop/MBAN FALL B/MKT618/Final Group Project/Smartphone_WTP.csv", row.names = FALSE)
+
+# Check summary of WTP
+summary(wtp[, grep("WTP", colnames(wtp))])  # Summarize WTP columns
+```
+
+# 4. A combination of factor and cluster analysis to form either psychographic-based (Q7)or benefit-based (Q6) segments, profile the segments and identify to which segment(s) iPhone 4 should be targeted. You need to report ONLY one type of segments.  (Hint: you should decide on number of factors/clusters based on your ability to interpret them in meaningful ways)
+
+### I use Q6 "Please rate, on a scale of 1 to 7 (1 represents “not at all important” and 7 represents “very important”), how important each of these attributes are in your decision to purchase a smart phone."
+
+```{r}
+# Load necessary libraries
+library(tidyverse)
+library(psych)
+library(factoextra)
+library(GPArotation)
+library(psych)
+```
+
+### Step 1:Inspect data structure and select the necessary variables
+```{r}
+# Subset benefit data
+benefit_data <- survey_data[, c("imp_brand", "imp_screen_size", "imp_screen_resolution", "imp_battery_life", 
+                                "imp_appearance", "imp_storage", "imp_weight", "imp_durability", "imp_price", 
+                                "imp_wifi", "imp_operating", "imp_camera")]
+
+# Handle missing values
+benefit_data <- na.omit(benefit_data)
+
+# Standardize data
+benefit_data_scaled <- scale(benefit_data)
+
+# Step 1: Inspect data structure and select the necessary variables
+str(benefit_data) # Reveal variables
+head(benefit_data) # Print out the first 6 rows
+names(benefit_data) # Get the list of variable names
+```
+
+### Step 2: Compute the correlation matrix among benefit-related attributes
+```{r}
+corMatrix <- cor(benefit_data)
+round(corMatrix, 2) # Round to 2 decimal places for better readability
+```
+
+### Step 3: Initial factor extraction using Principal Components Method
+```{r}
+PC.Initial <- principal(benefit_data_scaled, nfactors = ncol(benefit_data_scaled), rotate = "none")
+print.psych(PC.Initial) # Print the results
+```
+
+### Step 4: Determine the number of factors using a scree plot
+```{r}
+plot(PC.Initial$values, type = "b", xlab = "Factor", ylab = "Eigenvalue", 
+     cex.axis = 1.25, cex.lab = 1.5, main = "Scree Plot") 
+```
+
+Based on scree plot, determine the appropriate number of factors for interpretability. In this case, we decide on 4. factors. When creating factors using factor analysis, although the scree plot may appear to suggest 2 factors, we want to try 4 factors to as the results are more interpretable.
+
+
+### Step 5: Factor extraction with rotation
+```{r}
+PC.Final <- principal(benefit_data, nfactors = 4, rotate = "varimax", score = TRUE) # Extract 4 factors
+print.psych(PC.Final, cut = 0.3, sort = TRUE) # Show factor loadings greater than 0.3, sorted for clarity
+
+# we interpret only those loadings with absolute values above 0.3 as significant.
+```
+
+The table displays the factor loadings for each variable across four factors (RC1, RC2, RC3, and RC4). These loadings help us understand which variables are most associated with each factor.
+
+Based on the above result, the factors can be named as follows:
+RC1: Performance & Features
+RC2: Design & Aesthetics
+RC3: Photography & Camera
+RC4: Versatility & Screen Experience
+
+
+### Step 6: Obtain factor scores and include them in the original dataset
+```{r}
+# Add factor scores to the original dataset
+benefit_data_with_factors <- cbind(benefit_data, PC.Final$scores)
+
+# Rename the factors for interpretability based on your analysis
+colnames(benefit_data_with_factors)[(ncol(benefit_data) + 1):(ncol(benefit_data_with_factors))] <- c(
+  "Performance_Features",  # RC1
+  "Design_Aesthetics",     # RC2
+  "Photography_Camera",    # RC3
+  "Versatility_Screen"     # RC4
+)
+
+# Check the updated dataset with the new factor names
+head(benefit_data_with_factors, 15)
+```
+
+
+```{r}
+# Extract factor scores
+factor_scores <- PC.Final$scores
+
+# Extract factor loadings
+factor_loadings <- PC.Final$loadings
+
+# Required libraries
+library(ggplot2)
+library(ggrepel)
+
+# Prepare data for factor scores (points)
+factor_scores_df <- as.data.frame(factor_scores)
+colnames(factor_scores_df) <- c("Factor1", "Factor2", "Factor3", "Factor4")  # Rename as needed
+
+# Prepare data for factor loadings (arrows)
+factor_loadings_df <- as.data.frame(as.matrix(factor_loadings[, 1:2]))  # Use the first two factors for simplicity
+colnames(factor_loadings_df) <- c("Factor1", "Factor2")
+factor_loadings_df$Variable <- rownames(factor_loadings_df)
+
+# Biplot
+ggplot() +
+  # Add factor scores as points
+  geom_point(data = factor_scores_df, aes(x = Factor1, y = Factor2), color = "blue", alpha = 0.5) +
+  # Add factor loadings as arrows
+  geom_segment(data = factor_loadings_df, aes(x = 0, y = 0, xend = Factor1, yend = Factor2),
+               arrow = arrow(length = unit(0.2, "cm")), color = "red", size = 1) +
+  # Add labels to arrows
+  geom_text_repel(data = factor_loadings_df, aes(x = Factor1, y = Factor2, label = Variable), size = 4, color = "red") +
+  # Axis labels and theme
+  labs(title = "Biplot of Factors", x = "Factor 1", y = "Factor 2") +
+  theme_minimal()
+
+```
+
+
+
+
+### Step 7: Perform Cluster Analysis
+```{r}
+factor_scores <- benefit_data_with_factors[, c("Performance_Features", "Design_Aesthetics", "Photography_Camera", "Versatility_Screen")]
+
+set.seed(123)  # For reproducibility
+wss <- numeric()
+for (k in 1:10) {
+  km <- kmeans(factor_scores, centers = k, nstart = 25)
+  wss[k] <- km$tot.withinss
+}
+
+# Plot the Elbow Method
+plot(1:10, wss, type = "b", pch = 19, frame = FALSE,
+     xlab = "Number of Clusters (k)", ylab = "Total Within-Cluster Sum of Squares",
+     main = "Elbow Plot")
+```
+We decided on 5 clusters based on the elbow plot.
+
+Factor Analysis aims to reduce the dimensionality of the data by identifying latent constructs (e.g., RC1, RC2, etc.). These constructs represent groups of related variables (e.g., Performance, Design).
+
+Cluster Analysis groups observations (e.g., respondents) into clusters based on similarities in their factor scores. It does not directly depend on the number of factors but uses the factor scores to group similar responses.
+
+### Step 8: Perform k-means clustering with the chosen number of clusters
+```{r}
+set.seed(12345)
+kmeans_result <- kmeans(factor_scores, centers = 5, nstart = 25)
+
+# Add cluster labels to the dataset
+benefit_data_with_factors$cluster <- kmeans_result$cluster
+
+# Summarize and Profile Clusters
+cluster_summary <- benefit_data_with_factors %>%
+  group_by(cluster) %>%
+  summarize(across(everything(), mean, na.rm = TRUE))
+
+
+print(cluster_summary)  # View cluster profiles
+```
+
+Cluster 1: Practical users who value versatility and performance while deprioritizing design.
+Cluster 2: Disengaged or price-sensitive users with low interest across all factors.
+Cluster 3: Balanced users who value design, aesthetics, and overall performance.
+Cluster 4: Photography enthusiasts who prioritize camera features over versatility or design.
+Cluster 5: Performance-oriented users with a strong focus on functionality and less interest in photography.
+
+
+### Step 9: Visualize Clusters
+```{r}
+library(factoextra)
+fviz_cluster(kmeans_result, data = factor_scores,
+             geom = "point", ellipse.type = "convex",
+             main = "Cluster Visualization")
+```
+
